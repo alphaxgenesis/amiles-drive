@@ -1,6 +1,6 @@
 // Amile's Drive: keeps the game on the device so it opens with no internet.
 // Change VERSION whenever the game changes; the next online launch picks up the new copy.
-const VERSION = 'amiles-drive-v1';
+const VERSION = 'amiles-drive-v2';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', event => {
