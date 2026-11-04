@@ -1,0 +1,1336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#080914">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Amile's Drive">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+  /* clear the notch and home bar when it runs full screen from the home screen */
+  :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  body { margin: 0; }
+</style><title>Amile's Drive [Rustenburg]</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one centred column; the game stage is the page, a quiet control strip sits under it.
+   Committed to one dark look on purpose: it is a window onto space. */
+:root {
+  --ground: #080914;
+  --panel: #111329;
+  --line: #262b55;
+  --ink: #eceefa;
+  --muted: #a0a4ca;
+  --paint: #ff4054;
+  --ion: #62d5ff;
+  --display: "Avenir Next", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --body: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+body { background: var(--ground); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap {
+  max-width: 1000px; margin: 0 auto;
+  padding-block: 28px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 16px;
+}
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 24px; }
+h1 { margin: 0; font-family: var(--display); font-weight: 800; font-size: clamp(26px, 4.2vw, 38px); letter-spacing: 0.01em; line-height: 1.1; text-wrap: balance; }
+h1 em { font-style: normal; color: var(--paint); }
+h1 .place { font-family: var(--mono); font-size: 0.42em; font-weight: 600; letter-spacing: 0.12em; color: var(--ion); vertical-align: middle; white-space: nowrap; }
+.tag { margin: 0; color: var(--muted); max-width: 56ch; min-width: 0; }
+.stage {
+  position: relative; width: 100%; max-width: 100%; aspect-ratio: 2 / 1;
+  border-radius: 12px; overflow: hidden; background: #04050c;
+  box-shadow: 0 0 0 1px var(--line), 0 26px 60px -32px rgba(98, 213, 255, 0.45);
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  cursor: pointer; outline: none;
+}
+.stage:focus-visible { box-shadow: 0 0 0 2px var(--ion), 0 26px 60px -32px rgba(98, 213, 255, 0.45); }
+@media (max-width: 620px) { .stage { aspect-ratio: 4 / 3; } }
+.stage canvas { display: block; width: 100%; height: 100%; }
+.noscript {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 10px; padding: 16px;
+  text-align: center; color: var(--ink); background: var(--ground); font-size: 16px; line-height: 1.45;
+  user-select: text; -webkit-user-select: text; cursor: auto;
+}
+.noscript a { color: var(--ion); font-weight: 700; word-break: break-all; }
+.rotate-hint { display: none; margin: -6px 0 0; color: var(--muted); font-size: 13px; text-align: center; }
+@media (orientation: portrait) and (pointer: coarse) and (max-width: 620px) { .rotate-hint { display: block; } }
+/* A phone held sideways: the game takes the whole visible screen and everything else moves below it.
+   The game is drawn for whatever shape the stage has, so a wider screen simply shows more of space. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .wrap { padding-block: 8px 24px; gap: 12px; }
+  .stage {
+    order: -1; aspect-ratio: auto; border-radius: 10px;
+    height: calc(100vh - 16px - env(safe-area-inset-bottom, 0px));
+    height: calc(100svh - 16px - env(safe-area-inset-bottom, 0px));
+  }
+}
+.bar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; }
+.keys { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: 14px; min-width: 0; }
+kbd {
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line); border-bottom-width: 2px;
+  border-radius: 5px; padding: 1px 6px;
+}
+.btns { display: flex; gap: 8px; }
+button {
+  font: 600 14px var(--body); color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px; cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--ion); }
+button:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible { outline: 2px solid var(--ion); outline-offset: 2px; }
+.note { margin: 0; color: var(--muted); font-size: 13px; }
+.words { display: grid; gap: 10px; padding-top: 6px; border-top: 1px solid var(--line); }
+.words h2 { margin: 6px 0 0; font-family: var(--display); font-size: 17px; font-weight: 700; text-wrap: balance; }
+.words h2 span { color: var(--muted); font-weight: 500; font-size: 14px; }
+.words dl { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 24px; }
+.words dl div { min-width: 0; }
+.words dt { font-weight: 700; color: var(--ink); }
+.words dd { margin: 0; color: var(--muted); font-size: 13px; }
+.words .lang { color: var(--ion); font-size: 12px; letter-spacing: 0.04em; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header>
+    <h1>Amile’s <em>Drive</em> <span class="place">[RUSTENBURG]</span></h1>
+    <p class="tag">A cherry-red roadster heading past the Moon toward Mars. Cold-gas thrusters under the car fire it upward like a rocket; rotate it to aim the push, and flip it right round for points.</p>
+  </header>
+
+  <div class="stage" id="stage" tabindex="0" role="application"
+       aria-label="Amile's Drive, Rustenburg. Hold Space or the Up arrow to fire the thrusters, Left and Right arrows to rotate.">
+    <canvas id="game"></canvas>
+    <noscript>
+      <div class="noscript">
+        <strong>This preview can't run the game.</strong>
+        <span>On an iPhone or iPad, open this link in Safari to play:</span>
+        <a href="https://claude.ai/artifact/KK238kCnx4tCgRohx6SHLb">https://claude.ai/artifact/KK238kCnx4tCgRohx6SHLb</a>
+        <span>On a computer, open the file in Chrome, Edge, Firefox or Safari.</span>
+      </div>
+    </noscript>
+  </div>
+  <p class="rotate-hint">Turn your phone sideways for a bigger game.</p>
+
+  <div class="bar">
+    <ul class="keys">
+      <li><kbd>Space</kbd> <kbd>↑</kbd> or hold the game: thrusters</li>
+      <li><kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd>: rotate</li>
+      <li><kbd>P</kbd> pause</li>
+      <li><kbd>M</kbd> sound</li>
+    </ul>
+    <div class="btns">
+      <button id="pauseBtn" type="button" disabled>Pause</button>
+      <button id="soundBtn" type="button" aria-pressed="true">Sound on</button>
+    </div>
+  </div>
+
+  <p class="note">The thrusters push out of the car's underside, so tilting the nose down drives you forward and tilting it back pulls you back; let go of the rotate keys and the car levels itself. A full flip scores 100, charge cells 25, and a violet bubble absorbs one hit. On a touchscreen, use the two round buttons in the corner to rotate. Everything is drawn inside this one page, so it plays with no internet connection.</p>
+  <section class="words" aria-labelledby="words-h">
+    <h2 id="words-h">Words along the way <span>· Setswana and isiZulu</span></h2>
+    <dl>
+      <div><dt><span lang="tn">Dumela!</span> · <span lang="zu">Sawubona!</span></dt><dd>Hello! <span class="lang">Setswana · isiZulu</span></dd></div>
+      <div><dt><span lang="tn">A re yeng!</span> · <span lang="zu">Asihambe!</span></dt><dd>Let's go! <span class="lang">Setswana · isiZulu</span></dd></div>
+      <div><dt><span lang="zu">Siyahamba!</span></dt><dd>We're on our way! <span class="lang">isiZulu</span></dd></div>
+      <div><dt><span lang="tn">Ke nako!</span></dt><dd>It's time! <span class="lang">Setswana</span></dd></div>
+      <div><dt><span lang="zu">Qaphela!</span></dt><dd>Watch out! (a comet is coming) <span class="lang">isiZulu</span></dd></div>
+      <div><dt><span lang="zu">Kuhle!</span> · <span lang="tn">O dirile sentle!</span></dt><dd>Nice! · You did well! <span class="lang">isiZulu · Setswana</span></dd></div>
+      <div><dt><span lang="zu">Yebo!</span></dt><dd>Yes! <span class="lang">isiZulu</span></dd></div>
+      <div><dt>Halala!</dt><dd>Hooray! Well done! <span class="lang">Setswana and isiZulu</span></dd></div>
+      <div><dt><span lang="tn">Go siame!</span></dt><dd>It's all right! <span class="lang">Setswana</span></dd></div>
+      <div><dt><span lang="tn">Ngwedi</span> · <span lang="zu">Inyanga</span></dt><dd>The Moon <span class="lang">Setswana · isiZulu</span></dd></div>
+      <div><dt><span lang="zu">Linda kancane</span></dt><dd>Wait a moment <span class="lang">isiZulu</span></dd></div>
+      <div><dt>Eish!</dt><dd>Oh no! <span class="lang">South African slang</span></dd></div>
+      <div><dt><span lang="zu">Phinda!</span></dt><dd>Again! <span class="lang">isiZulu</span></dd></div>
+    </dl>
+  </section>
+  <p class="sr" id="live" aria-live="polite"></p>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- canvas & helpers ----------
+  const H = 400;                 // logical height; width follows the stage's shape
+  let W = 800;
+  const stage = document.getElementById('stage');
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const soundBtn = document.getElementById('soundBtn');
+  const live = document.getElementById('live');
+  const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const DISPLAY = '"Avenir Next","Segoe UI Variable Display","Segoe UI",system-ui,sans-serif';
+  const MONO = 'ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace';
+  const TAU = Math.PI * 2;
+  let sx = 1, sy = 1, homeX = 150;
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const randi = (a, b) => Math.floor(rand(a, b + 1));
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const pad5 = n => String(Math.max(0, n | 0)).padStart(5, '0');
+  const pick = list => list[randi(0, list.length - 1)];
+  // a little Setswana and isiZulu along the way
+  const LAUNCH_WORDS = ['A re yeng!', 'Asihambe!', 'Siyahamba!', 'Ke nako!'];
+  const FLIP_WORDS = ['Kuhle!', 'O dirile sentle!', 'Yebo!'];
+
+  function readPref(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+  function writePref(key, val) { try { localStorage.setItem(key, String(val)); } catch (e) { /* storage blocked: keep playing */ } }
+  function rr(x, y, w, h, r) { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); }
+  function text(str, x, y, font, color, align, alpha) {
+    ctx.font = font; ctx.fillStyle = color; ctx.textAlign = align || 'center'; ctx.textBaseline = 'middle';
+    ctx.globalAlpha = alpha == null ? 1 : alpha; ctx.fillText(str, x, y); ctx.globalAlpha = 1;
+  }
+
+  // ---------- tuning ----------
+  const CS = 0.9;                                   // car draw scale
+  const GRAVITY = 1150, THRUST = 2750;              // thrust acts along the car's own "up"
+  const MAX_UP = 470, MAX_DOWN = 500, MAX_VX = 360;
+  const ROT_SPEED = 5.2;                            // rad/s while a rotate key is held (a flip takes ~1.2 s)
+  const BASE_SPEED = 270, MAX_SPEED = 720, ACCEL = 6.2;
+  const TOP = 30, BOTTOM = H - 22;
+  const CAR_HIT = [[-34, 1, 10], [-12, -1, 10], [10, -2, 10], [32, 1, 8.5], [-14, -24, 7]];
+  const NOZZLES = [[-43, 9.5], [0, 9.5], [42, 9.5]];   // underbody thrusters, car-local
+  const SAT_OFFS = [-44, -32, -20, 20, 32, 44];
+  const ROCK_TONES = [
+    ['#a89a8c', '#615649', '#2a2420'],
+    ['#94a0ae', '#525c69', '#22272e'],
+    ['#b48b6b', '#6b4b3a', '#2d2019'],
+  ];
+  const PLANET_KINDS = ['moon', 'mars', 'giant', 'ringed', 'ice'];
+  const NEBULA = [
+    { bx: 0.78, y: 0.26, r: 290, dh: 0, k: 0.012, a: 0.17 },
+    { bx: 0.18, y: 0.74, r: 240, dh: 70, k: 0.008, a: 0.12 },
+    { bx: 1.35, y: 0.52, r: 330, dh: -45, k: 0.010, a: 0.12 },
+  ];
+  const TOUCH_BTNS = [{ role: 'left', x: 48, y: H - 48, r: 27 }, { role: 'right', x: 114, y: H - 48, r: 27 }];
+
+  // ---------- state ----------
+  let state = 'ready';          // ready | running | paused | dying | over
+  let time = 0, elapsed = 0, distance = 0, bonus = 0, speed = 110, flips = 0;
+  let best = parseInt(readPref('roadster-drift-best') || '0', 10) || 0;
+  let bestAtStart = best, passedBest = false, newBest = false, lastScore = 0;
+  let humOn = false, lastRot = 0, touchMode = false;
+  let nextMilestone = 500;
+  let spawnTimer = 0, cellTimer = 0, shieldTimer = 0, planetTimer = 0, planetCount = 0, emitAcc = 0, attAcc = 0;
+  let shake = 0, flash = 0, dyingT = 0, canRestartAt = 0;
+  let obstacles = [], pickups = [], particles = [], texts = [], planets = [], stars = [];
+  let earth = null;
+  const car = { x: 150, y: H / 2, vx: 0, vy: 0, angle: 0, w: 0, spun: 0, spin: 0, boost: 0, rotJet: 0, shield: false, invuln: 0, wheel: 0 };
+
+  const score = () => Math.floor(distance / 12) + bonus;
+  const diff = () => clamp(elapsed / 90, 0, 1);
+
+  // ---------- input state (keyboard and any number of pointers) ----------
+  const keys = { thrust: false, left: false, right: false };
+  const ptrs = new Map();       // pointerId -> 'thrust' | 'left' | 'right'
+  function thrustHeld() { if (keys.thrust) return true; for (const r of ptrs.values()) if (r === 'thrust') return true; return false; }
+  function rotInput() {
+    let l = keys.left, r = keys.right;
+    for (const v of ptrs.values()) { if (v === 'left') l = true; else if (v === 'right') r = true; }
+    return (r ? 1 : 0) - (l ? 1 : 0);
+  }
+  function clearInput() { keys.thrust = keys.left = keys.right = false; ptrs.clear(); }
+
+  // ---------- sound (synthesised, nothing to download) ----------
+  let soundOn = readPref('roadster-drift-sound') !== 'off';
+  const sfx = (() => {
+    let ac = null, master = null, humGain = null, humFilter = null, noiseBuf = null;
+    function unlock() {
+      if (ac) { if (ac.state === 'suspended' && ac.resume) ac.resume().catch(() => {}); return; }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      try {
+        ac = new AC();
+        master = ac.createGain(); master.gain.value = soundOn ? 0.5 : 0; master.connect(ac.destination);
+        noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+        const d = noiseBuf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+        const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+        humFilter = ac.createBiquadFilter(); humFilter.type = 'bandpass'; humFilter.frequency.value = 1300; humFilter.Q.value = 0.8;
+        humGain = ac.createGain(); humGain.gain.value = 0;
+        src.connect(humFilter); humFilter.connect(humGain); humGain.connect(master); src.start();
+      } catch (e) { ac = null; }
+    }
+    function tone(freq, at, dur, type, vol, slideTo) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, at);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, at + dur);
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(vol, at + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(g); g.connect(master); o.start(at); o.stop(at + dur + 0.03);
+    }
+    function noise(at, dur, from, to, vol, type) {
+      const src = ac.createBufferSource(); src.buffer = noiseBuf;
+      const f = ac.createBiquadFilter(); f.type = type || 'lowpass';
+      f.frequency.setValueAtTime(from, at); f.frequency.exponentialRampToValueAtTime(to, at + dur);
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(vol, at + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      src.connect(f); f.connect(g); g.connect(master); src.start(at); src.stop(at + dur + 0.05);
+    }
+    const ready = () => !!ac;
+    return {
+      unlock,
+      setMuted(m) { if (ac && master) master.gain.setTargetAtTime(m ? 0 : 0.5, ac.currentTime, 0.02); },
+      hum(on) { if (!ready() || !humGain) return; humGain.gain.setTargetAtTime(on ? 0.11 : 0, ac.currentTime, on ? 0.03 : 0.08); },
+      humPitch(f) { if (ready() && humFilter) humFilter.frequency.setTargetAtTime(f, ac.currentTime, 0.12); },
+      launch() { if (!ready()) return; const t = ac.currentTime; noise(t, 0.45, 5000, 600, 0.35, 'bandpass'); tone(90, t, 0.35, 'sine', 0.25, 50); },
+      puff() { if (!ready()) return; noise(ac.currentTime, 0.12, 6000, 2500, 0.12, 'highpass'); },
+      cell() { if (!ready()) return; const t = ac.currentTime; tone(880, t, 0.09, 'sine', 0.16); tone(1320, t + 0.06, 0.13, 'sine', 0.13); },
+      shield() { if (!ready()) return; const t = ac.currentTime; tone(420, t, 0.32, 'triangle', 0.15, 980); },
+      pop() { if (!ready()) return; const t = ac.currentTime; tone(320, t, 0.22, 'square', 0.05, 90); noise(t, 0.25, 3000, 300, 0.2); },
+      flip() { if (!ready()) return; const t = ac.currentTime; [523, 784, 1046, 1568].forEach((f, i) => tone(f, t + i * 0.055, 0.14, 'triangle', 0.12)); },
+      milestone() { if (!ready()) return; const t = ac.currentTime; [660, 880, 1175].forEach((f, i) => tone(f, t + i * 0.08, 0.18, 'triangle', 0.12)); },
+      crash() { if (!ready()) return; const t = ac.currentTime; noise(t, 1.0, 2600, 80, 0.55); tone(120, t, 0.55, 'sine', 0.4, 36); },
+    };
+  })();
+
+  // ---------- layout ----------
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    canvas.width = Math.round(r.width * dpr);
+    canvas.height = Math.round(r.height * dpr);
+    const newW = clamp(Math.round(H * r.width / r.height), 480, 1100);
+    if (newW !== W || !stars.length) { W = newW; buildStars(); }
+    sx = canvas.width / W; sy = canvas.height / H;
+    homeX = Math.round(clamp(W * 0.19, 110, 170));
+    if (state === 'ready') car.x = homeX;
+    car.x = clamp(car.x, 56, W * 0.6);
+  }
+
+  // ---------- background ----------
+  function buildStars() {
+    stars = [];
+    const layers = [
+      { n: 80, f: 0.035, r: [0.4, 1.0], a: [0.25, 0.55] },
+      { n: 50, f: 0.11, r: [0.7, 1.5], a: [0.4, 0.8] },
+      { n: 24, f: 0.32, r: [1.1, 2.0], a: [0.6, 1.0] },
+    ];
+    layers.forEach((L, li) => {
+      const n = Math.round(L.n * W / 800);
+      for (let i = 0; i < n; i++) {
+        const tint = Math.random();
+        stars.push({
+          x: rand(0, W), y: rand(0, H), r: rand(L.r[0], L.r[1]), a: rand(L.a[0], L.a[1]), f: L.f,
+          tw: rand(0, TAU), layer: li, col: tint < 0.08 ? '#ffd9b0' : tint < 0.16 ? '#b9dcff' : '#ffffff',
+        });
+      }
+    });
+  }
+
+  function makeEarth() {
+    const R = 760;
+    const e = { x: W * 0.42, y: H - 70 + R, R, land: [], clouds: [] };
+    const cols = ['#3f8d4f', '#356f3e', '#a98f5e', '#478f4a'];
+    for (let i = 0; i < 10; i++) e.land.push({ a: -Math.PI / 2 + rand(-0.5, 0.5), d: R - rand(6, 70), rx: rand(24, 72), ry: rand(9, 24), col: cols[randi(0, 3)] });
+    for (let i = 0; i < 16; i++) e.clouds.push({ a: -Math.PI / 2 + rand(-0.55, 0.55), d: R - rand(2, 64), rx: rand(28, 90), ry: rand(2.5, 7) });
+    return e;
+  }
+
+  function spawnPlanet() {
+    const kind = planetCount === 0 ? 'moon' : planetCount === 1 ? 'mars' : PLANET_KINDS[randi(0, PLANET_KINDS.length - 1)];
+    planetCount++;
+    const r = kind === 'giant' ? rand(60, 85) : kind === 'ringed' ? rand(34, 46) : kind === 'moon' ? rand(20, 30) : rand(26, 40);
+    const p = { kind, r, x: W + r * 2 + 40, y: rand(r + 24, H * 0.6), f: rand(0.03, 0.05), tilt: rand(-0.35, 0.35), bands: [], craters: [] };
+    for (let i = 0; i < 8; i++) p.bands.push(rand(0.5, 1));
+    for (let i = 0; i < 6; i++) { const a = rand(0, TAU), d = rand(0, r * 0.7); p.craters.push([Math.cos(a) * d, Math.sin(a) * d, rand(r * 0.08, r * 0.2)]); }
+    planets.push(p);
+  }
+
+  function drawBackground() {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#04050d'); g.addColorStop(0.6, '#080a1c'); g.addColorStop(1, '#0d1030');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const hue = 250 + 45 * Math.sin(distance / 9000);
+    const span = W + 700;
+    for (const n of NEBULA) {
+      const x = ((n.bx * W - distance * n.k) % span + span) % span - 350;
+      const y = n.y * H;
+      const ng = ctx.createRadialGradient(x, y, 0, x, y, n.r);
+      ng.addColorStop(0, `hsla(${hue + n.dh},80%,55%,${n.a})`);
+      ng.addColorStop(1, `hsla(${hue + n.dh},80%,55%,0)`);
+      ctx.fillStyle = ng; ctx.fillRect(x - n.r, y - n.r, n.r * 2, n.r * 2);
+    }
+  }
+
+  function drawStars(v) {
+    for (const s of stars) {
+      ctx.globalAlpha = s.a * (0.75 + 0.25 * Math.sin(time * 2.2 + s.tw));
+      ctx.fillStyle = s.col;
+      const streak = s.layer > 0 ? s.f * v * 0.05 : 0;
+      if (streak > 2) ctx.fillRect(s.x, s.y - s.r * 0.5, streak, Math.max(0.8, s.r));
+      else { ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill(); }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function shade(x, y, r, c0, c1, c2) {
+    const g = ctx.createRadialGradient(x - r * 0.4, y - r * 0.45, r * 0.05, x, y, r);
+    g.addColorStop(0, c0); g.addColorStop(0.55, c1); g.addColorStop(1, c2);
+    return g;
+  }
+  function ring(p, back) {
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.tilt);
+    ctx.strokeStyle = back ? 'rgba(220,200,150,0.35)' : 'rgba(238,218,168,0.78)';
+    ctx.lineWidth = p.r * 0.16;
+    ctx.beginPath(); ctx.ellipse(0, 0, p.r * 1.9, p.r * 0.45, 0, back ? Math.PI : 0, back ? TAU : Math.PI); ctx.stroke();
+    ctx.restore();
+  }
+  function drawPlanet(p) {
+    const { x, y, r } = p;
+    if (p.kind === 'ringed') ring(p, true);
+    const fills = {
+      moon: ['#e4e1da', '#8d8982', '#2c2a28'], mars: ['#f5a36f', '#c2512a', '#3d140a'],
+      giant: ['#f1d6ad', '#c08a5a', '#3a2414'], ringed: ['#f3e3b0', '#c6a35a', '#3b2e12'], ice: ['#e3f6ff', '#6fb3e0', '#14304f'],
+    }[p.kind];
+    ctx.fillStyle = shade(x, y, r, fills[0], fills[1], fills[2]);
+    ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+    ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.clip();
+    if (p.kind === 'giant' || p.kind === 'ringed') {
+      const step = (2 * r) / p.bands.length;
+      p.bands.forEach((h, i) => {
+        ctx.fillStyle = i % 2 ? 'rgba(255,238,210,0.22)' : 'rgba(140,80,40,0.30)';
+        ctx.fillRect(x - r, y - r + i * step, 2 * r, step * h);
+      });
+    }
+    if (p.kind === 'moon') {
+      for (const [a, b, cr] of p.craters) { ctx.fillStyle = 'rgba(40,38,35,0.28)'; ctx.beginPath(); ctx.arc(x + a, y + b, cr, 0, TAU); ctx.fill(); }
+    }
+    if (p.kind === 'mars') { ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.ellipse(x - r * 0.1, y - r * 0.93, r * 0.34, r * 0.12, 0, 0, TAU); ctx.fill(); }
+    const n = ctx.createRadialGradient(x - r * 0.45, y - r * 0.45, r * 0.2, x, y, r * 1.05);
+    n.addColorStop(0, 'rgba(0,0,10,0)'); n.addColorStop(0.7, 'rgba(0,0,10,0.15)'); n.addColorStop(1, 'rgba(0,0,10,0.6)');
+    ctx.fillStyle = n; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    ctx.restore();
+    if (p.kind === 'ringed') ring(p, false);
+    if (p.kind === 'moon') text('Ngwedi · Inyanga', x, y + r + 14, '600 11px ' + DISPLAY, 'rgba(200,205,240,0.6)');
+  }
+
+  function drawEarth() {
+    if (!earth) return;
+    const { x, y, R } = earth;
+    const glow = ctx.createRadialGradient(x, y, R - 6, x, y, R + 48);
+    glow.addColorStop(0, 'rgba(120,200,255,0.5)'); glow.addColorStop(0.3, 'rgba(70,140,255,0.16)'); glow.addColorStop(1, 'rgba(70,140,255,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, R + 48, 0, TAU); ctx.fill();
+    const sea = ctx.createLinearGradient(x - 320, 0, x + 320, 0);
+    sea.addColorStop(0, '#4a9be8'); sea.addColorStop(0.55, '#1f5fb5'); sea.addColorStop(1, '#0a1f4a');
+    ctx.fillStyle = sea; ctx.beginPath(); ctx.arc(x, y, R, 0, TAU); ctx.fill();
+    ctx.save(); ctx.beginPath(); ctx.arc(x, y, R, 0, TAU); ctx.clip();
+    for (const l of earth.land) {
+      ctx.fillStyle = l.col; ctx.beginPath();
+      ctx.ellipse(x + Math.cos(l.a) * l.d, y + Math.sin(l.a) * l.d, l.rx, l.ry, l.a + Math.PI / 2, 0, TAU); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    for (const c of earth.clouds) {
+      ctx.beginPath(); ctx.ellipse(x + Math.cos(c.a) * c.d, y + Math.sin(c.a) * c.d, c.rx, c.ry, c.a + Math.PI / 2, 0, TAU); ctx.fill();
+    }
+    const night = ctx.createLinearGradient(x - 60, 0, x + 340, 0);
+    night.addColorStop(0, 'rgba(2,4,16,0)'); night.addColorStop(1, 'rgba(2,4,16,0.72)');
+    ctx.fillStyle = night; ctx.fillRect(x - 400, y - R - 10, 800, 160);
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(175,225,255,0.65)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, R - 0.5, -Math.PI / 2 - 0.5, -Math.PI / 2 + 0.5); ctx.stroke();
+  }
+
+  // ---------- obstacles ----------
+  function rockShape(r) {
+    const n = randi(9, 13), pts = [], craters = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU + rand(-0.12, 0.12), rr2 = r * rand(0.8, 1.06);
+      pts.push([Math.cos(a) * rr2, Math.sin(a) * rr2]);
+    }
+    const k = randi(2, 4);
+    for (let i = 0; i < k; i++) { const a = rand(0, TAU), d = rand(0, r * 0.5); craters.push([Math.cos(a) * d, Math.sin(a) * d, rand(r * 0.12, r * 0.24)]); }
+    return { pts, craters, tone: randi(0, ROCK_TONES.length - 1) };
+  }
+  function newRock(x, y, r, extra) {
+    return Object.assign({ kind: 'rock', x, y, r, vy: 0, rot: rand(0, TAU), vr: rand(-1.4, 1.4), sf: 1, ext: r * 1.1 }, rockShape(r), extra || {});
+  }
+  function groupRock(dx, dy, r, orb) {
+    return Object.assign({ dx, dy, r, rot: rand(0, TAU), vr: rand(-1.5, 1.5), orb: orb || null }, rockShape(r));
+  }
+  function rockPos(g, k) {
+    let x = g.x + k.dx, y = g.y + k.dy;
+    if (k.orb) { x += Math.cos(k.orb.ph) * k.orb.rad; y += Math.sin(k.orb.ph) * k.orb.rad * 0.7; }
+    return [x, y];
+  }
+  function newSat(x, y) {
+    return { kind: 'sat', x, y, vy: rand(-16, 16), rot: rand(0, TAU), vr: rand(-0.75, 0.75), sf: 0.88, ext: 58, blink: rand(0, TAU) };
+  }
+  function newComet() {
+    const fromTop = Math.random() < 0.5;
+    return { kind: 'comet', x: W + 260, y: fromTop ? rand(12, 90) : rand(H - 90, H - 12), vy: (fromTop ? 1 : -1) * rand(60, 120), sf: 1.35, r: 9, ext: 140 };
+  }
+
+  function circlesOf(o) {
+    switch (o.kind) {
+      case 'rock': return [[o.x, o.y, o.r * 0.82]];
+      case 'group': return o.rocks.map(k => { const p = rockPos(o, k); return [p[0], p[1], k.r * 0.82]; });
+      case 'sat': {
+        const c = Math.cos(o.rot), s = Math.sin(o.rot), out = [[o.x, o.y, 11]];
+        for (const d of SAT_OFFS) out.push([o.x + c * d, o.y + s * d, 6.5]);
+        return out;
+      }
+      case 'comet': return [[o.x, o.y, o.r * 0.95]];
+    }
+    return [];
+  }
+
+  function weighted(list) {
+    let sum = 0;
+    for (const it of list) sum += it[1];
+    let r = Math.random() * sum;
+    for (const it of list) { r -= it[1]; if (r <= 0) return it[0]; }
+    return list[list.length - 1][0];
+  }
+
+  function spawnObstacle() {
+    const d = diff();
+    const x = W + 70;
+    const opts = [['rock', 1]];
+    if (elapsed > 5) opts.push(['sat', 0.55]);
+    if (elapsed > 9) opts.push(['pair', 0.55]);
+    if (elapsed > 14) opts.push(['swarm', 0.5]);
+    if (elapsed > 20) opts.push(['wall', 0.4 + 0.35 * d]);
+    if (elapsed > 26) opts.push(['comet', 0.35 + 0.3 * d]);
+    let after = 0;
+    switch (weighted(opts)) {
+      case 'rock': {
+        const r = rand(14, 24 + 18 * d);
+        const y = Math.random() < 0.4 ? car.y + rand(-50, 50) : rand(r + 8, H - r - 8);
+        obstacles.push(newRock(x + r, clamp(y, r + 8, H - r - 8), r, { vy: rand(-18, 18) * (0.4 + d) }));
+        break;
+      }
+      case 'pair': {
+        const r1 = rand(16, 26), r2 = rand(16, 26);
+        const gap = lerp(170, 120, d), gc = rand(130, H - 130);
+        obstacles.push(newRock(x + r1, clamp(gc - gap / 2 - r1 - rand(0, 40), r1 + 6, H - r1 - 6), r1));
+        obstacles.push(newRock(x + r2 + rand(10, 60), clamp(gc + gap / 2 + r2 + rand(0, 40), r2 + 6, H - r2 - 6), r2));
+        break;
+      }
+      case 'sat': obstacles.push(newSat(x + 50, rand(60, H - 60))); break;
+      case 'swarm': {
+        const n = randi(5, 7 + Math.round(2 * d)), rocks = [];
+        for (let i = 0; i < n; i++) rocks.push(groupRock(rand(-40, 40), rand(-38, 38), rand(5, 10), { rad: rand(4, 14), w: rand(-1.6, 1.6), ph: rand(0, TAU) }));
+        obstacles.push({ kind: 'group', x: x + 50, y: rand(70, H - 70), vy: rand(-12, 12), sf: 1, rocks, ext: 70, swarm: true });
+        break;
+      }
+      case 'wall': {
+        const gap = lerp(170, 118, d), gc = rand(gap / 2 + 34, H - gap / 2 - 34), rocks = [];
+        let yy = gc - gap / 2;
+        while (yy > -24) { const r = rand(17, 24); rocks.push(groupRock(rand(-7, 7), yy - r, r)); yy -= r * 1.65; }
+        yy = gc + gap / 2;
+        while (yy < H + 24) { const r = rand(17, 24); rocks.push(groupRock(rand(-7, 7), yy + r, r)); yy += r * 1.65; }
+        obstacles.push({ kind: 'group', x: x + 30, y: 0, vy: 0, sf: 1, rocks, ext: 40 });
+        if (Math.random() < 0.5) pickups.push({ kind: 'cell', x: x + 30, y: gc, t: rand(0, TAU) });
+        after = 0.55;
+        break;
+      }
+      case 'comet': obstacles.push(newComet()); after = 0.15; break;
+    }
+    spawnTimer = rand(0.8, 1.45) * (1 - 0.38 * d) + after;
+  }
+
+  function blocked(x, y, pad) {
+    for (const o of obstacles) for (const c of circlesOf(o)) if (Math.hypot(c[0] - x, c[1] - y) < c[2] + pad) return true;
+    return false;
+  }
+  function spawnCells() {
+    const y0 = rand(50, H - 50), n = Math.random() < 0.35 ? 3 : 1;
+    for (let i = 0; i < n; i++) {
+      const p = { kind: 'cell', x: W + 30 + i * 38, y: clamp(y0 - (n > 1 ? Math.sin((i / (n - 1)) * Math.PI) * 26 : 0), 30, H - 30), t: rand(0, TAU) };
+      if (!blocked(p.x, p.y, 26)) pickups.push(p);
+    }
+    cellTimer = rand(2.2, 4.2);
+  }
+  const pickupY = p => p.y + Math.sin(time * 3 + p.t) * 4;
+
+  // ---------- particles & floating text ----------
+  function addText(str, x, y, font, color, life, vy) {
+    texts.push({ str, x, y, font, color, life: life || 1.1, max: life || 1.1, vy: vy == null ? -28 : vy });
+  }
+  function puff(x, y, n, cols, sMin, sMax, lMin, lMax, sizeMin, sizeMax, front, drag) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, TAU), s = rand(sMin, sMax), life = rand(lMin, lMax);
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life, max: life, size: rand(sizeMin, sizeMax), color: cols[randi(0, cols.length - 1)], glow: true, drag: drag || 1.8, front });
+    }
+  }
+  function explode(x, y) {
+    puff(x, y, 70, ['#fff2c4', '#ffd166', '#ff8a3d', '#ff3b3b'], 50, 420, 0.4, 1.1, 1.6, 4.2, true);
+    for (let i = 0; i < 14; i++) {
+      const a = rand(0, TAU), s = rand(60, 260), life = rand(0.8, 1.6);
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life, max: life, chunk: true, w: rand(3, 7), h: rand(2, 4), rot: rand(0, TAU), vr: rand(-10, 10), color: ['#e0182f', '#a80d22', '#d9dde3', '#2b3038'][randi(0, 3)], drag: 0.6, front: true });
+    }
+  }
+  // car-local point -> world point
+  function toWorld(lx, ly) {
+    const c = Math.cos(car.angle), s = Math.sin(car.angle);
+    lx *= CS; ly *= CS;
+    return [car.x + lx * c - ly * s, car.y + lx * s + ly * c];
+  }
+  // cold-gas vapour out of the underbody thrusters, along the car's own "down"
+  function emitVapour(dt, rate, strength) {
+    emitAcc += dt * rate;
+    const dx = -Math.sin(car.angle), dy = Math.cos(car.angle);
+    while (emitAcc >= 1) {
+      emitAcc -= 1;
+      const n = NOZZLES[randi(0, NOZZLES.length - 1)];
+      const p = toWorld(n[0] + rand(-2, 2), n[1] + 1);
+      const sp = rand(150, 260) * strength, life = rand(0.35, 0.65);
+      particles.push({
+        x: p[0], y: p[1], vx: dx * sp + rand(-25, 25) - speed * 0.35, vy: dy * sp + rand(-15, 15),
+        life, max: life, size: rand(1.8, 3.4), grow: rand(18, 30), color: Math.random() < 0.7 ? '#e8f2fb' : '#b9dcff', smoke: true, drag: 2.2,
+      });
+    }
+  }
+  // small attitude jets at nose and tail that do the rotating
+  function attitudeJets(rot) {
+    return rot > 0 ? [[44, -5, -1], [-45, 9, 1]] : [[44, 9, 1], [-45, -6, -1]];
+  }
+  function emitAttitude(dt, rot) {
+    attAcc += dt * 45;
+    const c = Math.cos(car.angle), s = Math.sin(car.angle);
+    while (attAcc >= 1) {
+      attAcc -= 1;
+      for (const [lx, ly, dir] of attitudeJets(rot)) {
+        const p = toWorld(lx, ly), sp = rand(90, 150), life = rand(0.2, 0.35);
+        particles.push({ x: p[0], y: p[1], vx: -s * dir * sp - speed * 0.3, vy: c * dir * sp, life, max: life, size: rand(1.2, 2.2), grow: 14, color: '#eef6ff', smoke: true, drag: 2.5 });
+      }
+    }
+  }
+  function updateParticles(dt) {
+    for (const p of particles) {
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      const k = Math.max(0, 1 - (p.drag || 0) * dt);
+      p.vx *= k; p.vy *= k;
+      if (p.chunk) p.rot += p.vr * dt;
+      p.life -= dt;
+    }
+    if (particles.length > 800) particles.splice(0, particles.length - 800);
+    particles = particles.filter(p => p.life > 0);
+  }
+  function drawParticles(front) {
+    for (const p of particles) {
+      if (!!p.front !== front) continue;
+      const a = clamp(p.life / p.max, 0, 1);
+      if (p.chunk) {
+        ctx.globalAlpha = a;
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.color; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore();
+        continue;
+      }
+      if (p.smoke) {
+        ctx.globalAlpha = a * 0.42;
+        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size + p.grow * (p.max - p.life), 0, TAU); ctx.fill();
+        continue;
+      }
+      ctx.globalAlpha = a;
+      if (p.glow) ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.4 + 0.6 * a), 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- drawing: obstacles & pickups ----------
+  function drawRockAt(px, py, k, rot) {
+    const c = Math.cos(rot), s = Math.sin(rot), T = ROCK_TONES[k.tone], r = k.r;
+    ctx.beginPath();
+    k.pts.forEach(([a, b], i) => { const X = px + a * c - b * s, Y = py + a * s + b * c; if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); });
+    ctx.closePath();
+    const g = ctx.createRadialGradient(px - r * 0.4, py - r * 0.45, r * 0.1, px, py, r * 1.15);
+    g.addColorStop(0, T[0]); g.addColorStop(0.55, T[1]); g.addColorStop(1, T[2]);
+    ctx.fillStyle = g; ctx.fill();
+    ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.stroke();
+    for (const [a, b, cr] of k.craters) {
+      const X = px + a * c - b * s, Y = py + a * s + b * c;
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.arc(X, Y, cr, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.13)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(X, Y, cr * 0.85, Math.PI * 0.1, Math.PI * 0.9); ctx.stroke();
+    }
+  }
+  function drawSat(o) {
+    ctx.save(); ctx.translate(o.x, o.y); ctx.rotate(o.rot);
+    ctx.strokeStyle = '#8e98a6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-17, 0); ctx.lineTo(17, 0); ctx.stroke();
+    for (const x0 of [-52, 16]) {
+      const g = ctx.createLinearGradient(0, -7, 0, 7);
+      g.addColorStop(0, '#3b78d8'); g.addColorStop(1, '#173a80');
+      ctx.fillStyle = g; ctx.fillRect(x0, -7, 36, 14);
+      ctx.strokeStyle = 'rgba(190,215,255,0.45)'; ctx.lineWidth = 0.7; ctx.beginPath();
+      for (let i = 1; i < 6; i++) { ctx.moveTo(x0 + i * 6, -7); ctx.lineTo(x0 + i * 6, 7); }
+      ctx.moveTo(x0, 0); ctx.lineTo(x0 + 36, 0); ctx.stroke();
+      ctx.strokeStyle = '#c9d2de'; ctx.lineWidth = 1; ctx.strokeRect(x0, -7, 36, 14);
+    }
+    const bg = ctx.createLinearGradient(-11, -9, 11, 9);
+    bg.addColorStop(0, '#f6d873'); bg.addColorStop(0.5, '#c99528'); bg.addColorStop(1, '#7c5512');
+    ctx.fillStyle = bg; rr(-11, -9, 22, 18, 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(90,60,10,0.6)'; ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(-11, -2); ctx.lineTo(11, 1); ctx.moveTo(-4, -9); ctx.lineTo(-2, 9); ctx.stroke();
+    ctx.strokeStyle = '#9aa3ad'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(0, -11.5); ctx.lineTo(0, -9); ctx.stroke();
+    ctx.fillStyle = '#e6ebf1'; ctx.beginPath(); ctx.ellipse(0, -13.5, 7, 2.6, 0, 0, TAU); ctx.fill();
+    if (Math.sin(o.blink) > 0.55) {
+      ctx.globalCompositeOperation = 'lighter';
+      const lg = ctx.createRadialGradient(0, 9, 0, 0, 9, 9);
+      lg.addColorStop(0, 'rgba(255,80,80,0.9)'); lg.addColorStop(1, 'rgba(255,80,80,0)');
+      ctx.fillStyle = lg; ctx.beginPath(); ctx.arc(0, 9, 9, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.restore();
+  }
+  function drawComet(o) {
+    const v = Math.max(speed, 80) * o.sf;
+    const len = Math.hypot(v, o.vy) || 1, ux = v / len, uy = -o.vy / len, nx = -uy, ny = ux, L = 120;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createLinearGradient(o.x, o.y, o.x + ux * L, o.y + uy * L);
+    g.addColorStop(0, 'rgba(190,240,255,0.75)'); g.addColorStop(0.4, 'rgba(98,200,255,0.3)'); g.addColorStop(1, 'rgba(80,120,255,0)');
+    ctx.fillStyle = g; ctx.beginPath();
+    ctx.moveTo(o.x + nx * 8, o.y + ny * 8); ctx.lineTo(o.x + ux * L, o.y + uy * L); ctx.lineTo(o.x - nx * 8, o.y - ny * 8); ctx.closePath(); ctx.fill();
+    const hg = ctx.createRadialGradient(o.x, o.y, 0, o.x, o.y, o.r * 3);
+    hg.addColorStop(0, 'rgba(255,255,255,0.95)'); hg.addColorStop(0.3, 'rgba(160,230,255,0.55)'); hg.addColorStop(1, 'rgba(90,160,255,0)');
+    ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(o.x, o.y, o.r * 3, 0, TAU); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#eef9ff'; ctx.beginPath(); ctx.arc(o.x, o.y, o.r * 0.75, 0, TAU); ctx.fill();
+  }
+  function drawObstacle(o) {
+    if (o.kind === 'rock') drawRockAt(o.x, o.y, o, o.rot);
+    else if (o.kind === 'group') for (const k of o.rocks) { const p = rockPos(o, k); drawRockAt(p[0], p[1], k, k.rot); }
+    else if (o.kind === 'sat') drawSat(o);
+    else if (o.kind === 'comet') drawComet(o);
+  }
+  function drawWarnings() {
+    for (const o of obstacles) {
+      if (o.kind !== 'comet' || o.x <= W - 4) continue;
+      const t = (o.x - W) / Math.max(60, speed * o.sf);
+      const yy = clamp(o.y + o.vy * t, 18, H - 18);
+      const a = 0.55 + 0.45 * Math.sin(time * 18);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#9fe6ff';
+      ctx.beginPath(); ctx.moveTo(W - 24, yy); ctx.lineTo(W - 10, yy - 8); ctx.lineTo(W - 10, yy + 8); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1;
+      text('Qaphela!', W - 30, yy, '800 12px ' + DISPLAY, '#9fe6ff', 'right', a);
+    }
+  }
+  function drawPickup(p) {
+    const y = pickupY(p);
+    ctx.save(); ctx.translate(p.x, y);
+    const cell = p.kind === 'cell';
+    ctx.globalCompositeOperation = 'lighter';
+    const halo = ctx.createRadialGradient(0, 0, 0, 0, 0, 22);
+    halo.addColorStop(0, cell ? 'rgba(120,235,255,0.5)' : 'rgba(190,160,255,0.55)');
+    halo.addColorStop(1, 'rgba(120,200,255,0)');
+    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(0, 0, 22, 0, TAU); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    if (cell) {
+      ctx.rotate(Math.sin(time * 2 + p.t) * 0.25);
+      const g = ctx.createLinearGradient(0, -9, 0, 9);
+      g.addColorStop(0, '#d5fbff'); g.addColorStop(1, '#2aa9de');
+      ctx.fillStyle = g; ctx.beginPath();
+      for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + Math.PI / 6; const X = Math.cos(a) * 9, Y = Math.sin(a) * 9; if (i) ctx.lineTo(X, Y); else ctx.moveTo(X, Y); }
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = '#0b3550'; ctx.beginPath();
+      ctx.moveTo(1.6, -5.5); ctx.lineTo(-2.8, 0.8); ctx.lineTo(-0.1, 0.8); ctx.lineTo(-1.6, 5.5); ctx.lineTo(3, -0.9); ctx.lineTo(0.3, -0.9); ctx.closePath(); ctx.fill();
+    } else {
+      const g = ctx.createRadialGradient(-3, -4, 1, 0, 0, 13);
+      g.addColorStop(0, 'rgba(240,235,255,0.55)'); g.addColorStop(1, 'rgba(150,120,255,0.12)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 13, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(205,190,255,0.95)'; ctx.lineWidth = 1.8; ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(0, 0, 9, Math.PI * 1.1, Math.PI * 1.45); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ---------- drawing: the roadster ----------
+  function drawWheel(x, y) {
+    ctx.save(); ctx.translate(x, y);
+    ctx.fillStyle = '#121318'; ctx.beginPath(); ctx.arc(0, 0, 8.4, 0, TAU); ctx.fill();
+    const g = ctx.createRadialGradient(-1.5, -1.5, 0.5, 0, 0, 5.6);
+    g.addColorStop(0, '#f2f4f7'); g.addColorStop(1, '#7f8792');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 5.4, 0, TAU); ctx.fill();
+    ctx.rotate(car.wheel);
+    ctx.strokeStyle = '#4a5260'; ctx.lineWidth = 1.2;
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * TAU;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * 1.6, Math.sin(a) * 1.6); ctx.lineTo(Math.cos(a) * 5, Math.sin(a) * 5); ctx.stroke();
+    }
+    ctx.fillStyle = '#2b3038'; ctx.beginPath(); ctx.arc(0, 0, 1.6, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  function drawDriver() {
+    ctx.fillStyle = '#1a1d24';
+    ctx.beginPath(); ctx.moveTo(-27, -9); ctx.lineTo(-25, -24); ctx.quadraticCurveTo(-24, -27, -21, -26); ctx.lineTo(-19, -9); ctx.closePath(); ctx.fill();
+    const suit = ctx.createLinearGradient(-22, -20, -8, -8);
+    suit.addColorStop(0, '#ffffff'); suit.addColorStop(1, '#b9c0cc');
+    ctx.fillStyle = suit;
+    ctx.beginPath(); ctx.moveTo(-22, -9); ctx.lineTo(-21, -18); ctx.quadraticCurveTo(-19, -21, -14, -20); ctx.lineTo(-9, -17); ctx.lineTo(-8, -9); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#dfe4ec'; ctx.lineWidth = 3.2; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-15, -16); ctx.quadraticCurveTo(-8, -12, -2, -15); ctx.stroke();
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.ellipse(-1, -15, 1.4, 4, 0.35, 0, TAU); ctx.stroke();
+    const hg = ctx.createRadialGradient(-17, -28, 1, -14, -24, 8);
+    hg.addColorStop(0, '#ffffff'); hg.addColorStop(1, '#aeb6c2');
+    ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(-14, -24, 7, 0, TAU); ctx.fill();
+    const vg = ctx.createLinearGradient(-11, -28, -7, -20);
+    vg.addColorStop(0, '#ffe08a'); vg.addColorStop(0.5, '#e0a12a'); vg.addColorStop(1, '#8a5a0c');
+    ctx.fillStyle = vg; ctx.beginPath(); ctx.ellipse(-11, -24, 4, 4.6, 0, -Math.PI / 2, Math.PI / 2); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.ellipse(-8.8, -26.2, 1.1, 1.6, 0.3, 0, TAU); ctx.fill();
+  }
+  // a cold-gas plume in car-local space; dir 1 points down out of the floor, -1 points up
+  function drawJet(nx, ny, dir, len, width, b) {
+    const g = ctx.createLinearGradient(nx, ny, nx, ny + dir * len);
+    g.addColorStop(0, `rgba(245,251,255,${0.95 * b})`);
+    g.addColorStop(0.3, `rgba(185,225,255,${0.6 * b})`);
+    g.addColorStop(1, 'rgba(130,185,255,0)');
+    ctx.fillStyle = g; ctx.beginPath();
+    ctx.moveTo(nx - width * 0.35, ny); ctx.lineTo(nx + width * 0.35, ny);
+    ctx.quadraticCurveTo(nx + width, ny + dir * len * 0.5, nx + width * 0.55, ny + dir * len);
+    ctx.lineTo(nx - width * 0.55, ny + dir * len);
+    ctx.quadraticCurveTo(nx - width, ny + dir * len * 0.5, nx - width * 0.35, ny);
+    ctx.closePath(); ctx.fill();
+  }
+  function drawCar() {
+    ctx.save();
+    ctx.translate(car.x, car.y); ctx.rotate(car.angle); ctx.scale(CS, CS);
+    if (car.invuln > 0 && Math.floor(time * 14) % 2 === 0) ctx.globalAlpha = 0.4;
+
+    // wheel wells
+    ctx.fillStyle = '#07080c';
+    ctx.beginPath(); ctx.arc(-30, 8, 10, Math.PI, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(30, 8, 10, Math.PI, TAU); ctx.fill();
+
+    drawDriver();
+
+    // body
+    const bg = ctx.createLinearGradient(0, -12, 0, 9);
+    bg.addColorStop(0, '#ff6b6f'); bg.addColorStop(0.3, '#ea2338'); bg.addColorStop(0.72, '#a80d22'); bg.addColorStop(1, '#5a0613');
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.moveTo(-47, 7.5);
+    ctx.lineTo(-48, -1);
+    ctx.quadraticCurveTo(-48, -7.5, -40, -8.5);
+    ctx.lineTo(-22, -10);
+    ctx.lineTo(4, -10);
+    ctx.quadraticCurveTo(18, -11, 30, -7);
+    ctx.quadraticCurveTo(40, -5, 44, -2);
+    ctx.quadraticCurveTo(48.5, -0.5, 48, 3);
+    ctx.quadraticCurveTo(47.5, 7, 44, 8);
+    ctx.lineTo(40, 8);
+    ctx.arc(30, 8, 10, 0, Math.PI, true);
+    ctx.lineTo(-20, 8);
+    ctx.arc(-30, 8, 10, 0, Math.PI, true);
+    ctx.lineTo(-47, 7.5);
+    ctx.closePath(); ctx.fill();
+
+    // paint details
+    ctx.strokeStyle = 'rgba(255,220,220,0.45)'; ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.moveTo(-44, -5.5); ctx.quadraticCurveTo(-30, -7.5, -20, -7.6); ctx.lineTo(4, -7.6); ctx.quadraticCurveTo(22, -8.2, 38, -3.5); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.ellipse(20, -8.4, 7, 1.1, -0.12, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(60,0,10,0.55)'; ctx.lineWidth = 0.9;
+    ctx.beginPath(); ctx.moveTo(-5, -9.5); ctx.quadraticCurveTo(-6, -2, -4, 6); ctx.stroke();
+    ctx.fillStyle = 'rgba(40,0,8,0.55)';
+    ctx.beginPath(); ctx.moveTo(-16, 0); ctx.quadraticCurveTo(-12, -2, -8, 0); ctx.lineTo(-9, 3); ctx.quadraticCurveTo(-12, 1.5, -15, 3); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(20,0,4,0.6)'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(-19, 6.2); ctx.lineTo(19, 6.2); ctx.stroke();
+
+    // lights
+    ctx.fillStyle = '#fff4c8';
+    ctx.beginPath(); ctx.moveTo(39, -3.6); ctx.quadraticCurveTo(44, -2.6, 46.6, -0.4); ctx.lineTo(44.5, 0.4); ctx.quadraticCurveTo(42, -1.6, 38.5, -2.2); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ff2d3d'; ctx.fillRect(-48.4, -4.2, 2.2, 3.4);
+    ctx.globalCompositeOperation = 'lighter';
+    const tl = ctx.createRadialGradient(-48, -2.5, 0, -48, -2.5, 7);
+    tl.addColorStop(0, 'rgba(255,60,70,0.55)'); tl.addColorStop(1, 'rgba(255,60,70,0)');
+    ctx.fillStyle = tl; ctx.beginPath(); ctx.arc(-48, -2.5, 7, 0, TAU); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+
+    // windscreen
+    ctx.fillStyle = 'rgba(150,215,255,0.32)';
+    ctx.beginPath(); ctx.moveTo(1.5, -10.2); ctx.lineTo(6.5, -10.2); ctx.lineTo(-1.8, -21.2); ctx.lineTo(-4.3, -21.2); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#16191f'; ctx.lineWidth = 1.3; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(3.4, -11.5); ctx.lineTo(-1.6, -19.2); ctx.stroke();
+
+    drawWheel(-30, 8);
+    drawWheel(30, 8);
+
+    // thruster nozzles in the floor and at nose / tail
+    ctx.fillStyle = '#1d2129';
+    for (const [nx, ny] of NOZZLES) { rr(nx - 3, ny - 2, 6, 3.5, 1); ctx.fill(); }
+    ctx.fillRect(43, -6.5, 2.5, 1.6); ctx.fillRect(-46.5, -7, 2.5, 1.6);
+
+    // underbody plumes
+    ctx.globalCompositeOperation = 'lighter';
+    if (car.boost > 0.02) {
+      const b = car.boost;
+      NOZZLES.forEach(([nx, ny], i) => {
+        const center = i === 1;
+        const L = (18 + 36 * b + Math.random() * 7 * b) * (center ? 1.18 : 1);
+        drawJet(nx, ny + 1.4, 1, L, center ? 9 : 7, b);
+      });
+    }
+    // attitude jets while rotating
+    const rj = Math.abs(car.rotJet);
+    if (rj > 0.05) {
+      for (const [lx, ly, dir] of attitudeJets(car.rotJet)) drawJet(lx, ly, dir, 9 + 8 * rj + Math.random() * 3, 4, rj);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    // shield bubble
+    if (car.shield) {
+      const a = 0.65 + 0.2 * Math.sin(time * 5);
+      ctx.globalAlpha = 1;
+      const sg = ctx.createRadialGradient(-2, -7, 20, -2, -7, 62);
+      sg.addColorStop(0, 'rgba(150,120,255,0)'); sg.addColorStop(0.8, `rgba(170,150,255,${0.12 * a})`); sg.addColorStop(1, `rgba(200,185,255,${0.3 * a})`);
+      ctx.fillStyle = sg; ctx.beginPath(); ctx.ellipse(-2, -7, 62, 38, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = `rgba(210,195,255,${0.75 * a})`; ctx.lineWidth = 1.6; ctx.stroke();
+      ctx.strokeStyle = `rgba(255,255,255,${0.5 * a})`; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.ellipse(-2, -7, 56, 33, 0, Math.PI * 1.15, Math.PI * 1.42); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function carCircles() {
+    return CAR_HIT.map(h => { const p = toWorld(h[0], h[1]); return [p[0], p[1], h[2] * CS * 0.9]; });
+  }
+
+  // ---------- HUD & screens ----------
+  // a circular arrow; dir 1 = clockwise (nose down), -1 = anticlockwise (nose up)
+  function drawRotateIcon(x, y, dir) {
+    ctx.save(); ctx.translate(x, y); if (dir < 0) ctx.scale(-1, 1);
+    ctx.strokeStyle = '#e8ecff'; ctx.fillStyle = '#e8ecff'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+    const a0 = -Math.PI * 0.8, a1 = Math.PI * 0.4;
+    ctx.beginPath(); ctx.arc(0, 0, 10, a0, a1); ctx.stroke();
+    const tx = Math.cos(a1) * 10, ty = Math.sin(a1) * 10, t = a1 + Math.PI / 2;
+    ctx.beginPath();
+    ctx.moveTo(tx + Math.cos(t) * 6, ty + Math.sin(t) * 6);
+    ctx.lineTo(tx + Math.cos(t + 2.4) * 5, ty + Math.sin(t + 2.4) * 5);
+    ctx.lineTo(tx + Math.cos(t - 2.4) * 5, ty + Math.sin(t - 2.4) * 5);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  function drawTouchButtons() {
+    if (!touchMode || !(state === 'ready' || state === 'running' || state === 'paused')) return;
+    const active = new Set(ptrs.values());
+    for (const b of TOUCH_BTNS) {
+      const on = active.has(b.role);
+      ctx.fillStyle = on ? 'rgba(98,213,255,0.28)' : 'rgba(255,255,255,0.08)';
+      ctx.strokeStyle = on ? 'rgba(98,213,255,0.9)' : 'rgba(255,255,255,0.32)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill(); ctx.stroke();
+      drawRotateIcon(b.x, b.y, b.role === 'right' ? 1 : -1);
+    }
+  }
+  function drawHUD() {
+    if (state === 'ready') return;
+    const shown = state === 'over' ? lastScore : score();
+    ctx.font = '600 15px ' + MONO;
+    const sTxt = pad5(shown);
+    const sW = ctx.measureText(sTxt).width;
+    text(sTxt, W - 18, 22, '600 15px ' + MONO, '#eef0ff', 'right');
+    text('BEST ' + pad5(best), W - 18 - sW - 20, 22, '600 15px ' + MONO, 'rgba(160,166,210,0.85)', 'right');
+    if (state === 'running' || state === 'paused' || state === 'dying') {
+      text('SPEED', 18, 22, '600 11px ' + MONO, 'rgba(160,166,210,0.85)', 'left');
+      const bx = 62, bw = 84, f = clamp((speed - BASE_SPEED) / (MAX_SPEED - BASE_SPEED), 0, 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.12)'; rr(bx, 19, bw, 6, 3); ctx.fill();
+      const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+      g.addColorStop(0, '#62d5ff'); g.addColorStop(1, '#ff4054');
+      ctx.fillStyle = g; rr(bx, 19, Math.max(6, bw * (0.06 + 0.94 * f)), 6, 3); ctx.fill();
+      text((speed / 18).toFixed(1) + ' km/s', bx + bw + 10, 22, '600 11px ' + MONO, 'rgba(200,205,240,0.9)', 'left');
+      text('FLIPS ' + flips, 18, 44, '600 11px ' + MONO, 'rgba(200,205,240,0.9)', 'left');
+      if (car.shield) {
+        ctx.strokeStyle = 'rgba(205,190,255,0.95)'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(104, 44, 6, 0, TAU); ctx.stroke();
+        text('SHIELD', 115, 44, '600 11px ' + MONO, '#d7ccff', 'left');
+      }
+    }
+  }
+  function veil(a) { ctx.fillStyle = `rgba(3,4,12,${a})`; ctx.fillRect(0, 0, W, H); }
+  function drawTitle(y) {
+    const font = '800 44px ' + DISPLAY;
+    const ls = 'letterSpacing' in ctx;
+    if (ls) ctx.letterSpacing = '3px';
+    ctx.font = font;
+    const t1 = 'AMILE’S ', t2 = 'DRIVE';
+    const w1 = ctx.measureText(t1).width, w2 = ctx.measureText(t2).width, x0 = W / 2 - (w1 + w2) / 2;
+    text(t1, x0, y, font, '#f2f3ff', 'left');
+    text(t2, x0 + w1, y, font, '#ff4054', 'left');
+    if (ls) ctx.letterSpacing = '6px';
+    text('[RUSTENBURG]', W / 2, y + 33, '700 13px ' + MONO, '#62d5ff');
+    if (ls) ctx.letterSpacing = '0px';
+  }
+  function drawScreens() {
+    const pulse = 0.55 + 0.45 * Math.sin(time * 4);
+    if (state === 'ready') {
+      const vg = ctx.createLinearGradient(0, 0, 0, H);
+      vg.addColorStop(0, 'rgba(3,4,12,0.62)'); vg.addColorStop(0.42, 'rgba(3,4,12,0)');
+      vg.addColorStop(0.72, 'rgba(3,4,12,0)'); vg.addColorStop(1, 'rgba(3,4,12,0.62)');
+      ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+      text('Dumela!   ·   Sawubona!', W / 2, 16, '600 12px ' + DISPLAY, '#9fe6ff');
+      drawTitle(54);
+      text(touchMode ? 'Hold anywhere to fire the thrusters. Round buttons rotate.' : 'Hold Space to fire the thrusters.  ← → rotate the car.',
+        W / 2, 116, '500 15px ' + DISPLAY, '#b4b8dc');
+      text('Spin it all the way round for +100', W / 2, 137, '500 14px ' + DISPLAY, '#8f94c4');
+      text(touchMode ? 'Tap to launch' : 'Press Space or tap to launch', W / 2, H - 50, '700 17px ' + DISPLAY, '#ffffff', 'center', pulse);
+      if (best > 0) text('BEST ' + pad5(best), W / 2, H - 24, '600 13px ' + MONO, '#a0a4ca');
+    } else if (state === 'paused') {
+      veil(0.5);
+      text('PAUSED', W / 2, H * 0.42, '800 36px ' + DISPLAY, '#f2f3ff');
+      text('Linda kancane', W / 2, H * 0.42 + 36, '600 15px ' + DISPLAY, '#9fe6ff');
+      text('Press P, Space or tap to resume', W / 2, H * 0.42 + 62, '500 15px ' + DISPLAY, '#b4b8dc');
+    } else if (state === 'over') {
+      veil(0.48);
+      const y = H * 0.32;
+      text('EISH!', W / 2, y, '800 44px ' + DISPLAY, '#ff4054');
+      text('Score ' + pad5(lastScore) + '    Best ' + pad5(best), W / 2, y + 46, '600 17px ' + MONO, '#eceefa');
+      text(flips === 1 ? '1 flip' : flips + ' flips', W / 2, y + 72, '500 14px ' + DISPLAY, '#a0a4ca');
+      if (newBest) text('Halala! New best distance', W / 2, y + 96, '600 14px ' + DISPLAY, '#62d5ff');
+      if (performance.now() >= canRestartAt) text(touchMode ? 'Phinda! Tap to go again' : 'Phinda! Press Space or tap to go again', W / 2, y + 132, '700 17px ' + DISPLAY, '#ffffff', 'center', pulse);
+    }
+  }
+
+  // ---------- game flow ----------
+  function updatePauseBtn() {
+    pauseBtn.textContent = state === 'paused' ? 'Resume' : 'Pause';
+    pauseBtn.disabled = !(state === 'running' || state === 'paused');
+  }
+  function start() {
+    const fresh = state === 'over';
+    state = 'running';
+    elapsed = 0; distance = 0; bonus = 0; flips = 0; speed = BASE_SPEED; nextMilestone = 500;
+    obstacles = []; pickups = []; texts = [];
+    if (fresh) { particles = []; planets = []; earth = makeEarth(); car.y = H * 0.55; }
+    car.x = homeX; car.vx = 0; car.vy = -330;      // lift-off kick
+    car.angle = 0; car.w = 0; car.spun = 0; car.spin = 0; car.rotJet = 0; car.shield = false; car.invuln = 0;
+    spawnTimer = 1.5; cellTimer = 2.4; shieldTimer = 14; planetTimer = 8; planetCount = 0; emitAcc = 0; attAcc = 0;
+    bestAtStart = best; passedBest = false; newBest = false;
+    // a burst of vapour from the floor for the launch
+    const p = toWorld(0, 12);
+    for (let i = 0; i < 40; i++) {
+      const life = rand(0.4, 0.9);
+      particles.push({ x: p[0] + rand(-38, 38), y: p[1], vx: rand(-160, 160), vy: rand(40, 220), life, max: life, size: rand(2, 4), grow: rand(20, 40), color: '#e8f2fb', smoke: true, drag: 2.4 });
+    }
+    sfx.launch();
+    addText(pick(LAUNCH_WORDS), car.x + 30, car.y - 58, '800 18px ' + DISPLAY, '#ffd166', 1.4, -20);
+    live.textContent = 'Launched.';
+    updatePauseBtn();
+  }
+  function togglePause() {
+    if (state === 'running') { state = 'paused'; clearInput(); }
+    else if (state === 'paused') state = 'running';
+    updatePauseBtn();
+  }
+  function hit(o, ox, oy) {
+    if (car.invuln > 0) return;
+    if (car.shield) {
+      car.shield = false; car.invuln = 1.1; o.dead = true;
+      puff(ox, oy, 26, ['#c8bfb5', '#8f8579', '#e8ddff'], 40, 240, 0.3, 0.8, 1.2, 3, true);
+      shake = Math.max(shake, 6);
+      addText('Go siame! Shield took it', car.x + 12, car.y - 46, '600 13px ' + MONO, '#d7ccff');
+      sfx.pop();
+      return;
+    }
+    state = 'dying'; dyingT = 1.1;
+    car.spin = rand(5, 8) * (Math.random() < 0.5 ? -1 : 1); car.vy = -140; car.vx = 30;
+    explode(car.x, car.y); shake = 14; flash = 1;
+    sfx.crash();
+    updatePauseBtn();
+  }
+  function gameOver() {
+    state = 'over';
+    lastScore = score();
+    newBest = lastScore > best;
+    if (newBest) { best = lastScore; writePref('roadster-drift-best', best); }
+    canRestartAt = performance.now() + 450;
+    live.textContent = 'Impact. Score ' + lastScore + ', ' + flips + ' flips. Best ' + best + '.';
+    updatePauseBtn();
+  }
+  function collect(p, py) {
+    p.dead = true;
+    if (p.kind === 'cell') {
+      bonus += 25;
+      addText('+25', p.x, py - 16, '700 15px ' + MONO, '#9ff0ff', 0.9);
+      puff(p.x, py, 14, ['#bff7ff', '#62d5ff', '#ffffff'], 30, 160, 0.25, 0.6, 1, 2.4, true);
+      sfx.cell();
+    } else {
+      car.shield = true;
+      addText('Shield up', p.x, py - 18, '700 14px ' + MONO, '#d7ccff', 1.0);
+      puff(p.x, py, 18, ['#e0d8ff', '#a995ff', '#ffffff'], 30, 180, 0.3, 0.7, 1, 2.6, true);
+      sfx.shield();
+    }
+  }
+  function checkCollisions() {
+    const cc = carCircles();
+    for (const o of obstacles) {
+      if (o.dead) continue;
+      for (const c of circlesOf(o)) {
+        for (const k of cc) {
+          const dx = c[0] - k[0], dy = c[1] - k[1], lim = c[2] + k[2];
+          if (dx * dx + dy * dy < lim * lim) { hit(o, c[0], c[1]); if (state !== 'running') return; break; }
+        }
+        if (o.dead) break;
+      }
+    }
+    for (const p of pickups) {
+      if (p.dead) continue;
+      const py = pickupY(p);
+      for (const k of cc) {
+        const dx = p.x - k[0], dy = py - k[1], lim = k[2] + 13;
+        if (dx * dx + dy * dy < lim * lim) { collect(p, py); break; }
+      }
+    }
+  }
+
+  function flyCar(dt) {
+    const thrust = thrustHeld(), rot = rotInput();
+    // rotation: attitude jets spin the car while a rotate key is held; let go and it levels itself
+    let target;
+    if (rot !== 0) target = rot * ROT_SPEED;
+    else { const upright = Math.round(car.angle / TAU) * TAU; target = clamp(-(car.angle - upright) * 7, -ROT_SPEED, ROT_SPEED); }
+    const maxDw = (rot !== 0 ? 34 : 42) * dt;
+    car.w += clamp(target - car.w, -maxDw, maxDw);
+    const dA = car.w * dt;
+    car.angle += dA; car.spun += dA;
+    if (Math.abs(car.spun) >= TAU) {
+      car.spun -= Math.sign(car.spun) * TAU;
+      flips++; bonus += 100;
+      addText(pick(FLIP_WORDS) + '  +100', car.x, car.y - 52, '800 16px ' + DISPLAY, '#ffd166', 1.1);
+      sfx.flip();
+    }
+    // thrust pushes along the car's own "up" (out of the floor), gravity pulls down
+    let ax = (homeX - car.x) * 1.4, ay = GRAVITY;
+    if (thrust) { ax += Math.sin(car.angle) * THRUST; ay -= Math.cos(car.angle) * THRUST; }
+    car.vx += ax * dt; car.vx *= Math.max(0, 1 - 1.4 * dt); car.vy += ay * dt;
+    car.vx = clamp(car.vx, -MAX_VX, MAX_VX); car.vy = clamp(car.vy, -MAX_UP, MAX_DOWN);
+    car.x += car.vx * dt; car.y += car.vy * dt;
+    const minX = 56, maxX = W * 0.6;
+    if (car.x < minX) { car.x = minX; if (car.vx < 0) car.vx = 0; }
+    if (car.x > maxX) { car.x = maxX; if (car.vx > 0) car.vx = 0; }
+    if (car.y < TOP) { car.y = TOP; if (car.vy < 0) car.vy = 0; }
+    if (car.y > BOTTOM) { car.y = BOTTOM; if (car.vy > 0) car.vy = 0; }
+    car.boost = lerp(car.boost, thrust ? 1 : 0, 1 - Math.exp(-16 * dt));
+    car.rotJet = lerp(car.rotJet, rot, 1 - Math.exp(-16 * dt));
+    if (thrust) emitVapour(dt, 150, 1);
+    if (rot !== 0) emitAttitude(dt, rot);
+    if (rot !== 0 && lastRot === 0) sfx.puff();
+    lastRot = rot;
+  }
+
+  function update(dt) {
+    time += dt;
+    if (state === 'running') {
+      elapsed += dt;
+      speed = Math.min(MAX_SPEED, BASE_SPEED + elapsed * ACCEL);
+      flyCar(dt);
+      if (car.invuln > 0) car.invuln -= dt;
+      distance += speed * dt;
+
+      const s = score();
+      if (s >= nextMilestone) {
+        addText('Halala! ' + nextMilestone, W / 2, 62, '800 30px ' + DISPLAY, '#62d5ff', 1.3, -14);
+        sfx.milestone();
+        nextMilestone += 500;
+      }
+      if (!passedBest && bestAtStart > 0 && s > bestAtStart) {
+        passedBest = true;
+        addText('Halala! New best', W - 90, 48, '700 13px ' + MONO, '#62d5ff', 1.6, -10);
+      }
+
+      spawnTimer -= dt; if (spawnTimer <= 0) spawnObstacle();
+      cellTimer -= dt; if (cellTimer <= 0) spawnCells();
+      shieldTimer -= dt;
+      if (shieldTimer <= 0) {
+        if (!car.shield) { const y = rand(60, H - 60); if (!blocked(W + 30, y, 30)) pickups.push({ kind: 'shield', x: W + 30, y, t: rand(0, TAU) }); }
+        shieldTimer = rand(20, 32);
+      }
+      planetTimer -= dt; if (planetTimer <= 0) { spawnPlanet(); planetTimer = rand(22, 34); }
+    } else if (state === 'ready') {
+      speed = 110;
+      car.x = homeX;
+      car.y = H * 0.5 + Math.sin(time * 1.8) * 9;
+      car.angle = Math.cos(time * 1.8) * 0.045;
+      car.boost = lerp(car.boost, 0.42 + 0.18 * Math.sin(time * 7), 1 - Math.exp(-8 * dt));
+      emitVapour(dt, 34, 0.55);
+    } else if (state === 'dying' || state === 'over') {
+      speed = Math.max(0, speed - 480 * dt);
+      car.vy += 520 * dt; car.y += car.vy * dt; car.x += car.vx * dt;
+      car.angle += car.spin * dt; car.spin *= 1 - 0.25 * dt; car.boost = 0; car.rotJet = 0;
+      if (state === 'dying') { dyingT -= dt; if (dyingT <= 0) gameOver(); }
+    }
+
+    const v = state === 'over' ? Math.max(speed, 22) : speed;
+    car.wheel += dt * (2 + v * 0.01);
+    for (const st of stars) { st.x -= v * st.f * dt; if (st.x < -6) { st.x += W + 12; st.y = rand(0, H); } }
+    if (earth) { earth.x -= v * 0.06 * dt; if (earth.x + 380 < 0) earth = null; }
+    for (const p of planets) p.x -= v * p.f * dt;
+    planets = planets.filter(p => p.x + p.r * 2.2 > 0);
+
+    for (const o of obstacles) {
+      o.x -= v * (o.sf || 1) * dt;
+      if (o.vy) o.y += o.vy * dt;
+      if (o.vr) o.rot += o.vr * dt;
+      if (o.kind === 'rock') {
+        if (o.y < o.r) { o.y = o.r; o.vy = Math.abs(o.vy); }
+        if (o.y > H - o.r) { o.y = H - o.r; o.vy = -Math.abs(o.vy); }
+      } else if (o.kind === 'group') {
+        for (const k of o.rocks) { k.rot += k.vr * dt; if (k.orb) k.orb.ph += k.orb.w * dt; }
+        if (o.swarm && (o.y < 50 || o.y > H - 50)) o.vy = -o.vy;
+      } else if (o.kind === 'sat') {
+        o.blink += dt * 4;
+        if (o.y < 40 || o.y > H - 40) o.vy = -o.vy;
+      } else if (o.kind === 'comet' && o.x < W && Math.random() < dt * 40) {
+        const life = rand(0.3, 0.6);
+        particles.push({ x: o.x, y: o.y, vx: rand(-20, 20), vy: rand(-20, 20), life, max: life, size: rand(1, 2.2), color: '#bfefff', glow: true, drag: 1 });
+      }
+    }
+    obstacles = obstacles.filter(o => !o.dead && o.x + o.ext > -60);
+    for (const p of pickups) p.x -= v * dt;
+    pickups = pickups.filter(p => !p.dead && p.x > -40);
+
+    if (state === 'running') checkCollisions();
+
+    updateParticles(dt);
+    for (const t of texts) { t.y += t.vy * dt; t.life -= dt; }
+    texts = texts.filter(t => t.life > 0);
+    shake = Math.max(0, shake - 30 * dt);
+    flash = Math.max(0, flash - 2.5 * dt);
+  }
+
+  function render() {
+    ctx.setTransform(sx, 0, 0, sy, 0, 0);
+    ctx.save();
+    if (shake > 0.2 && !reduceMotion) ctx.translate(rand(-shake, shake), rand(-shake, shake));
+    drawBackground();
+    drawStars(state === 'over' ? Math.max(speed, 22) : speed);
+    for (const p of planets) drawPlanet(p);
+    drawEarth();
+    for (const p of pickups) drawPickup(p);
+    for (const o of obstacles) drawObstacle(o);
+    drawParticles(false);
+    if (car.x > -80 && car.y < H + 80) drawCar();
+    drawParticles(true);
+    for (const t of texts) text(t.str, t.x, t.y, t.font, t.color, 'center', clamp((t.life / t.max) * 1.6, 0, 1));
+    drawWarnings();
+    ctx.restore();
+    if (flash > 0) { ctx.fillStyle = `rgba(255,236,220,${flash * 0.4})`; ctx.fillRect(0, 0, W, H); }
+    drawHUD();
+    drawTouchButtons();
+    drawScreens();
+  }
+
+  // ---------- input ----------
+  function press() {
+    sfx.unlock();
+    if (state === 'ready') start();
+    else if (state === 'over') { if (performance.now() >= canRestartAt) start(); }
+    else if (state === 'paused') togglePause();
+  }
+  function keyRole(e) {
+    if (e.code === 'Space' || e.key === ' ' || e.key === 'ArrowUp') return 'thrust';
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (k === 'w') return 'thrust';
+    if (k === 'ArrowLeft' || k === 'a') return 'left';
+    if (k === 'ArrowRight' || k === 'd') return 'right';
+    return null;
+  }
+  window.addEventListener('keydown', e => {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const role = keyRole(e);
+    if (role) {
+      e.preventDefault();
+      keys[role] = true;
+      if (role === 'thrust' && !e.repeat) press();
+      return;
+    }
+    if (e.key === 'ArrowDown') { e.preventDefault(); return; }
+    if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') { if (state === 'running' || state === 'paused') { e.preventDefault(); togglePause(); } return; }
+    if (e.key === 'm' || e.key === 'M') toggleSound();
+  });
+  window.addEventListener('keyup', e => {
+    const role = keyRole(e);
+    if (role) { e.preventDefault(); keys[role] = false; }
+  });
+  function zoneAt(e) {
+    const r = canvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+    for (const b of TOUCH_BTNS) if (Math.hypot(x - b.x, y - b.y) < b.r + 12) return b.role;
+    return 'thrust';
+  }
+  stage.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') touchMode = true;
+    try { stage.focus({ preventScroll: true }); } catch (_) { stage.focus(); }
+    try { stage.setPointerCapture(e.pointerId); } catch (_) { /* older browsers */ }
+    const role = touchMode ? zoneAt(e) : 'thrust';
+    ptrs.set(e.pointerId, role);
+    if (role === 'thrust' || state !== 'running') press();
+  });
+  const release = e => { ptrs.delete(e.pointerId); };
+  stage.addEventListener('pointerup', release);
+  stage.addEventListener('pointercancel', release);
+  stage.addEventListener('lostpointercapture', release);
+  stage.addEventListener('contextmenu', e => e.preventDefault());
+  window.addEventListener('blur', () => { clearInput(); if (state === 'running') togglePause(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { clearInput(); if (state === 'running') togglePause(); } });
+
+  function toggleSound() {
+    soundOn = !soundOn;
+    writePref('roadster-drift-sound', soundOn ? 'on' : 'off');
+    if (soundOn) sfx.unlock();
+    sfx.setMuted(!soundOn);
+    soundBtn.textContent = soundOn ? 'Sound on' : 'Sound off';
+    soundBtn.setAttribute('aria-pressed', String(soundOn));
+  }
+  pauseBtn.addEventListener('click', () => { togglePause(); pauseBtn.blur(); });
+  soundBtn.addEventListener('click', () => { toggleSound(); soundBtn.blur(); });
+  soundBtn.textContent = soundOn ? 'Sound on' : 'Sound off';
+  soundBtn.setAttribute('aria-pressed', String(soundOn));
+  if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) touchMode = true;
+
+  // ---------- go ----------
+  let last = performance.now();
+  function frame(now) {
+    let dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.05) dt = 0.05;
+    if (dt < 0) dt = 0;
+    if (state !== 'paused') {
+      const steps = Math.max(1, Math.ceil(dt / 0.0085)), h = dt / steps;
+      for (let i = 0; i < steps; i++) update(h);
+    }
+    const wantHum = state === 'running' && thrustHeld();
+    if (wantHum !== humOn) { humOn = wantHum; sfx.hum(wantHum); }
+    if (humOn) sfx.humPitch(1150 + clamp(-car.vy, 0, 470) * 1.2);
+    render();
+    requestAnimationFrame(frame);
+  }
+  resize();
+  earth = makeEarth();
+  if ('ResizeObserver' in window) new ResizeObserver(resize).observe(stage);
+  else window.addEventListener('resize', resize);
+  requestAnimationFrame(frame);
+})();
+</script>
+
+<script>
+  // keep a copy on the device so the game opens with no internet
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  }
+</script></body>
+</html>
